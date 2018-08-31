@@ -1,55 +1,107 @@
-## eos-altjs
+*Important*: eosjs2 is under active development and should be considered beta. Improvements and enhancements may break or remove existing functionality. Be sure to lock your dependencies.
 
-Alternative library for talking to the eos api.
+## eosjs2
 
-Features:
-* Entire source lives in a single file for easy reference
-* Only dependancy is eosjs-ecc for signing transactions
-* Errors don't get dropped on the floor
+Library for talking to the eos api. transact() is used to sign and push transactions onto the blockchain with an optional configuration object parameter.  This parameter can override the default value of broadcast: true, and can be used to fill TAPOS fields given blocksBehind and expireSeconds.  Given no configuration options, transactions are expected to be unpacked with TAPOS fields (expiration, ref_block_num, ref_block_prefix) and will automatically be broadcast onto the chain.
 
-Limitations:
-* Many ABI types not yet supported
-* It uses all provided keys to sign instead of querying the API for the needed set
-* No wallet support
+## Running Tests
 
-## Example use
+`npm run build-web` or `yarn build-web`
+Open `test.html` in your browser of choice
+
+*These tests assume that you have a local node for EOS set up at localhost:8000. The test.html file should run through 5 test cases with the final showing an exception on the screen for missing required TAPOS.*
+
+
+## Browser Usage Example
+
+`npm run build-web` or `yarn build-web`
 
 ```html
 <pre style="width: 100%; height: 100%; margin:0px; "></pre>
 
-<script src='https://cdn.rawgit.com/tbfleming/eos-altjs/4fb0415d4d2835db9667291c520b3985e44b58d9/dist/eos-altjs-debug.js'></script>
+<script src='dist-web/eosjs2-debug.js'></script>
+<script src='dist-web/eosjs2-jsonrpc-debug.js'></script>
+<script src='dist-web/eosjs2-jssig-debug.js'></script>
 <script>
-    let eos = window.eos_altjs;
-    let pre = document.getElementsByTagName('pre')[0];
+  let pre = document.getElementsByTagName('pre')[0];
+  const defaultPrivateKey = "5JtUScZK2XEp3g9gh7F8bwtPTRAkASmNrrftmx4AxDKD5K4zDnr"; // useraaaaaaaa
+  const rpc = new eosjs2_jsonrpc.JsonRpc('http://127.0.0.1:8000');
+  const signatureProvider = new eosjs2_jssig.default([defaultPrivateKey]);
+  const api = new eosjs2.Api({ rpc, signatureProvider });
 
-    (async () => {
-        let endpoint = 'https://...:8888';
-        let privateKeys = ['...'];
-
-        try {
-            let api = new eos.Api({ endpoint });
-            let result = await api.pushTransaction(privateKeys, {
-                // Reference 3 blocks behind the head and expire 10 seconds after
-                ...await api.easyTransactionHeader(3, 10),
-                actions: [
-                    await api.easyCreateAction('test', 'dosomething',
-                        [{
-                            actor: 'test',
-                            permission: 'active',
-                        }],
-                        {
-                            user: 'test',
-                            other_data: 1234,
-                        }),
-                ],
-            });
-
-            pre.textContent += '\n\nTransaction pushed!\n\n' + JSON.stringify(result, null, 4);
-        } catch (e) {
-            pre.textContent += '\nCaught exception: ' + e;
-            if (e instanceof eos.EosError)
-                pre.textContent += '\n\n' + JSON.stringify(e.json, null, 4);
-        }
-    })();
+  (async () => {
+    try {
+      const resultWithConfig = await api.transact({
+        actions: [{
+            account: 'eosio.token',
+            name: 'transfer',
+            authorization: [{
+                actor: 'useraaaaaaaa',
+                permission: 'active',
+            }],
+            data: {
+                from: 'useraaaaaaaa',
+                to: 'useraaaaaaab',
+                quantity: '0.0001 SYS',
+                memo: '',
+            },
+        }]
+      }, {
+        blocksBehind: 3,
+        expireSeconds: 30,
+      });
+      pre.textContent += '\n\nTransaction with configured TAPOS pushed!\n\n' + JSON.stringify(resultWithConfig, null, 2);
+    } catch (e) {
+      pre.textContent = '\nCaught exception: ' + e;
+      if (e instanceof eosjs2_jsonrpc.RpcError)
+        pre.textContent += '\n\n' + JSON.stringify(e.json, null, 2);
+    }
+  })();
 </script>
+```
+
+## Node / ES2015 Usage Example
+
+Note: tested with Node v10.3.0. Older versions need older syntax.
+
+`npm install eosjs2` or `yarn add eosjs2`
+
+```javascript
+const eosjs2 = require('eosjs2');
+const fetch = require('node-fetch');                            // node only; not needed in browsers
+const { TextDecoder, TextEncoder } = require('text-encoding');  // node only; not needed in browsers
+
+const defaultPrivateKey = "5JtUScZK2XEp3g9gh7F8bwtPTRAkASmNrrftmx4AxDKD5K4zDnr"; // useraaaaaaaa
+const rpc = new eosjs2.Rpc.JsonRpc('http://127.0.0.1:8000', { fetch });
+const signatureProvider = new eosjs2.SignatureProvider([defaultPrivateKey]);
+const api = new eosjs2.Api({ rpc, signatureProvider, textDecoder: new TextDecoder, textEncoder: new TextEncoder });
+
+(async () => {
+  try {
+    const resultWithConfig = await api.transact({
+      actions: [{
+        account: 'eosio.token',
+        name: 'transfer',
+        authorization: [{
+          actor: 'useraaaaaaaa',
+          permission: 'active',
+        }],
+        data: {
+          from: 'useraaaaaaaa',
+          to: 'useraaaaaaab',
+          quantity: '0.0001 SYS',
+          memo: '',
+        },
+      }]
+    }, {
+      blocksBehind: 3,
+      expireSeconds: 30,
+    });
+    console.log(JSON.stringify(resultWithConfig, null, 2));
+  } catch (e) {
+    console.log('Caught exception: ' + e);
+    if (e instanceof eosjs2.Rpc.RpcError)
+      console.log(JSON.stringify(e.json, null, 2));
+  }
+})();
 ```
